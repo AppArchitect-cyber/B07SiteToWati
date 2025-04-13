@@ -3,19 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Excel to CSV Converter with Preview</title>
+  <title>Excel to Custom CSV Converter</title>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
-      background: #e9f0f5;
+      background: #f0f4f8;
       display: flex;
-      flex-direction: column;
+      justify-content: center;
       align-items: center;
-      min-height: 100vh;
+      height: 100vh;
       margin: 0;
-      padding: 20px;
     }
-
     .container {
       background: #fff;
       padding: 30px 40px;
@@ -23,106 +21,53 @@
       box-shadow: 0 4px 20px rgba(0,0,0,0.1);
       text-align: center;
       width: 100%;
-      max-width: 600px;
+      max-width: 450px;
     }
-
     h2 {
       margin-bottom: 20px;
       color: #333;
     }
-
     input[type="file"] {
       display: block;
       margin: 20px auto;
       font-size: 16px;
     }
-
     button {
       padding: 12px 30px;
       font-size: 16px;
-      background-color: #007bff;
+      background-color: #28a745;
       color: white;
       border: none;
       border-radius: 8px;
       cursor: pointer;
       transition: background-color 0.3s ease;
-      margin: 10px;
     }
-
     button:hover {
-      background-color: #0056b3;
+      background-color: #218838;
     }
-
     .status {
       margin-top: 20px;
       font-size: 16px;
       color: #28a745;
       display: none;
     }
-
-    table {
-      margin-top: 30px;
-      border-collapse: collapse;
-      width: 100%;
-      font-size: 14px;
-    }
-
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: center;
-    }
-
-    th {
-      background-color: #007bff;
-      color: white;
-    }
-
-    .preview-table {
-      overflow-x: auto;
-      max-height: 300px;
-      overflow-y: auto;
-    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>Excel to CSV Converter</h2>
+    <h2>Excel to Custom CSV Converter</h2>
     <input type="file" id="excelFile" accept=".xlsx, .xls" />
-    <button onclick="previewCSV()">Preview</button>
-    <button onclick="downloadCSV()">Download CSV</button>
+    <button onclick="generateCSV()">Generate CSV</button>
     <div class="status" id="statusMessage"></div>
-    <div class="preview-table">
-      <table id="previewTable" style="display: none;">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>CountryCode</th>
-            <th>Phone</th>
-            <th>AllowBroadcast</th>
-            <th>AllowSMS</th>
-            <th>Attribute 1</th>
-            <th>Attribute 2</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>
-    let cleanedData = [];
-
-    function previewCSV() {
+    function generateCSV() {
       const fileInput = document.getElementById('excelFile');
       const statusMessage = document.getElementById('statusMessage');
-      const previewTable = document.getElementById('previewTable');
-      const tbody = previewTable.querySelector('tbody');
       statusMessage.style.display = 'none';
       statusMessage.textContent = '';
-      tbody.innerHTML = '';
-      cleanedData = [];
 
       const file = fileInput.files[0];
       if (!file) {
@@ -134,74 +79,57 @@
       reader.onload = function (e) {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: "array" });
+
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-        if (rows.length < 2) {
-          alert("The sheet doesn't contain enough data.");
+        const seenPhones = new Set();
+        const output = [
+          ["Name", "CountryCode", "Phone", "AllowBroadcast", "AllowSMS", "Attribute 1", "Attribute 2"]
+        ];
+
+        rows.forEach((row, index) => {
+          if (index < 2) return; // Skip headers/metadata
+
+          let name = (row[0] || '').toString().replace(/^USER/i, '').trim();
+          let phoneRaw = (row[1] || '').toString().replace(/\D/g, '');
+          if (phoneRaw.startsWith("91")) {
+            phoneRaw = phoneRaw.substring(2);
+          }
+
+          if (phoneRaw && !seenPhones.has(phoneRaw)) {
+            seenPhones.add(phoneRaw);
+            output.push([
+              name,
+              "91",
+              phoneRaw,
+              "TRUE",
+              "TRUE",
+              "value 1",
+              "value 2"
+            ]);
+          }
+        });
+
+        if (output.length === 1) {
+          alert("No valid or unique contact data found.");
           return;
         }
 
-        const seenPhones = new Set();
+        const csvContent = output.map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "contacts.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
 
-        for (let i = 1; i < rows.length; i++) {
-          let row = rows[i];
-          if (!row[2]) continue;
-
-          let phone = row[2].toString().trim();
-          if (seenPhones.has(phone)) continue;
-          seenPhones.add(phone);
-
-          let name = row[0] ? row[0].toString().replace(/^USER/i, '').trim() : '';
-          let countryCode = row[1] || '';
-          let allowBroadcast = row[3] || '';
-          let allowSMS = row[4] || '';
-          let attr1 = row[5] || '';
-          let attr2 = row[6] || '';
-
-          cleanedData.push([name, countryCode, phone, allowBroadcast, allowSMS, attr1, attr2]);
-
-          const tr = document.createElement('tr');
-          [name, countryCode, phone, allowBroadcast, allowSMS, attr1, attr2].forEach(val => {
-            const td = document.createElement('td');
-            td.textContent = val;
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        }
-
-        if (cleanedData.length > 0) {
-          previewTable.style.display = 'table';
-          statusMessage.style.display = 'block';
-          statusMessage.textContent = `✅ Previewed ${cleanedData.length} unique contacts.`;
-        } else {
-          alert("No valid unique contacts found.");
-        }
+        statusMessage.style.display = 'block';
+        statusMessage.textContent = `✅ Exported ${output.length - 1} unique contacts successfully!`;
       };
       reader.readAsArrayBuffer(file);
-    }
-
-    function downloadCSV() {
-      if (cleanedData.length === 0) {
-        alert("Please preview first or no valid contacts found.");
-        return;
-      }
-
-      const header = ["Name", "CountryCode", "Phone", "AllowBroadcast", "AllowSMS", "Attribute 1", "Attribute 2"];
-      const csvRows = [header.join(',')];
-      cleanedData.forEach(row => {
-        csvRows.push(row.join(','));
-      });
-
-      const csvContent = csvRows.join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "contacts.csv";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
     }
   </script>
 </body>
